@@ -1,0 +1,133 @@
+#!/bin/bash -x
+#SBATCH --account=hhb21
+#SBATCH --nodes=1
+#SBATCH --ntasks=2
+#SBATCH --ntasks-per-node=2
+#SBATCH --output=2ens-%j.out
+#SBATCH --error=2ens-%j.err
+#SBATCH --time=00:10:00
+#SBATCH --partition=batch
+#SBATCH --mail-user=qi.tang@unine.ch
+#SBATCH --mail-type=ALL
+
+# *** start of job script ***
+ulimit -s unlimited
+set -vx
+export NOPP=1
+
+echo $NCPUS
+# system dependent command lines 
+module load Stages/2019a
+module load Intel
+#module load IntelMPI
+#module load IntelMPI/2018.5.288
+module load ParaStationMPI
+module load CMake imkl netCDF netCDF-Fortran netCDF-C++4 #intel.compiler intel.mpi netcdf/4.4.0_intel 
+export NETCDF_Fortran_INCLUDE_DIRECTORIES=${EBROOTNETCDFMINFORTRAN}/include/
+export NETCDF_C_INCLUDE_DIRECTORIES=${EBROOTNETCDF}/include/
+export NETCDF_CXX_INCLUDE_DIRECTORIES=${EBROOTNETCDFMINCPLUSPLUS4}/include/
+
+module load Python/3.6.8
+module load SciPy-Stack/2019a-Python-3.6.8
+
+# end 
+
+export OMP_WAIT_POLICY=PASSIVE
+export CRAY_OMP_CHECK_AFFINITY=TRUE
+export OMP_NUM_THREADS=1
+
+# Ensmeble size
+export NENS=2
+
+# Total time steps
+export TSTEPS=1
+
+# Define run directory
+export BASE_DIR=/p/home/jusers/tang3/juwels/dev_hgs-pdaf   # root path to the hgs-pdaf directory
+export HGS_DIR=/p/home/jusers/tang3/juwels/HGS/HydroGeoSphere-2441-Linux/   # root parth to HGS binary
+export MODEL_DIR=${BASE_DIR}/hgsmodel/Alluvial_Hugo/Master_DA/  # root path to the HGS model directory
+export WORK_DIR=/p/scratch/chhb21/hhb211/output/hgs-pdaf/  # root path to the output directory
+export ENS_DIR=${WORK_DIR}/n2_test_juwels/   # root to the output ensemble directory
+					     # this path needs to be modified to avoid overwriting
+
+# Define if serial model run or DA run
+# A serial run should be done before the ensemble run
+export firstrun=T
+if [[ $firstrun = "T" ]]; then
+    cd ${MODEL_DIR}
+    ./launch.sh # prepare the launch.sh file 
+fi
+
+# Ensemble run
+# if firstrun=F
+
+mkdir $ENS_DIR
+for((ENS=1;ENS<=$NENS;ENS++))
+do
+  ENSstr=`printf %03d $ENS`     # ensemble size should be less than 999, otherwise here we should use a lrager number
+  echo $ENSstr
+  export RUN_DIR=${ENS_DIR}${ENSstr}'/'                # output for all erstarts and model logs
+  mkdir $RUN_DIR
+  cd $RUN_DIR
+  #namelist.config > toto
+  # mv toto namelist.config
+
+  #sed -i `grep -n ResultPath= namelist.config|cut -d ':' -f 1`"c ResultPath='${RUN_DIR}'" namelist.config
+
+  #source ${BASE_DIR}run_scripts/include_oasis3mct/cpl_pdaf.inc.ucr
+  #source ${BASE_DIR}run_scripts/include_oasis3mct/cpl_restart.inc.ucr
+
+  ln -s $HGS_DIR/grok grok
+  ln -s $HGS_DIR/phgs phgs
+  ln -s $BASE_DIR/hgs-pdaf/offline_omi/hgs-pdaf
+  cp -r ${MODEL_DIR}/* .
+  cp $BASE_DIR/namelists/namelist.pdaf .
+  source ${BASE_DIR}/run_scripts/cpl_pdaf.inc.ucr
+
+done
+
+cd $ENS_DIR
+
+echo run started at realtime:
+date
+echo `pwd`
+
+# create MPMD configuration file
+
+if [ -e mpmd.conf ];then
+  rm mpmd.conf
+fi
+touch mpmd.conf
+
+for((i=1;i<=$NENS;i++))
+do
+  ENSstr=`printf %03d $i`
+
+  echo '#!/bin/sh' > ${ENSstr}
+  echo 'cd '${ENSstr} >> grok${ENSstr}
+  echo `pwd`'/'$ENSstr'/grok' >> grok${ENSstr}
+  chmod +x grok${ENSstr}
+
+  echo '#!/bin/sh' > phgs${ENSstr}
+  echo 'cd '${ENSstr} >> phgs${ENSstr}
+  echo `pwd`'/'$ENSstr'/phgs' >> phgs${ENSstr}
+  chmod +x phgs${ENSstr}
+
+  echo '#!/bin/sh' > hgs-pdaf${ENSstr}
+  echo 'cd '${ENSstr} >> hgs-pdaf${ENSstr}
+  echo `pwd`'/'$ENSstr'/hgs-pdaf' >> hgs-pdaf${ENSstr}
+  chmod +x hgs-pdaf${ENSstr}
+  
+  #echo $i' ./grok'${ENSstr} >> mpmd.conf
+  #echo $i' ./phgs'${ENSstr} >> mpmd.conf
+  echo $((i-1))' ./hgs-pdaf'${ENSstr} >> mpmd.conf
+
+done
+cat mpmd.conf
+
+# time counter
+for((pdafstep=1;pdafstep<=$TSTEPS;pdafstep++))
+do
+  srun -l --propagate=STACK --multi-prog mpmd.conf &> out.$JOBID
+done
+
