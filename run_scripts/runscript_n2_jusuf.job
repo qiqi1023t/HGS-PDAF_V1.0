@@ -41,12 +41,11 @@ export NENS=2
 export TSTEPS=2
 
 # Define run directory
-export BASE_DIR=/p/home/jusers/tang1/jusuf/dev_hgs-pdaf/   # root path to the hgs-pdaf directory
-export HGS_DIR=/p/home/jusers/tang1/jusuf/HydroGeoSphere-2529-Linux/HydroGeoSphere-2529-Linux/   # root parth to HGS binary
-export MODEL_DIR=/p/project/icei-prace-2023-0004/tang1/input_HGS-PDAF/hgsmodel/synthetic_hete/  # root path to the HGS model directory
-export WORK_DIR=/p/scratch/icei-prace-2023-0004/tang1/output/hgs-pdaf/  # root path to the output directory
-export ENS_DIR=${WORK_DIR}/n2_hete/   # root to the output ensemble directory
-					     # this path needs to be modified to avoid overwriting
+export BASE_DIR=   # root path to the hgs-pdaf directory
+export HGS_DIR=   # root parth to HGS binary
+export MODEL_DIR=  # root path to the HGS model directory
+export WORK_DIR=  # root path to the output directory
+export ENS_DIR=  # root to the output ensemble directory
 
 # Define if serial model run or DA run
 # A serial run should be done before the ensemble run
